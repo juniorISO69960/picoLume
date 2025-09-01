@@ -171,7 +171,7 @@ async def dynamic_pulse():
         elif r == 255 and b > 0 and g == 0:
             b = max(0, b - step)
         # --- Brightness Pulse Step ---
-        brightness += direction * 10
+        brightness += direction * 5
         if brightness >= 255:
             brightness = 255
             direction = -1
