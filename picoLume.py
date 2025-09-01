@@ -20,13 +20,17 @@ LED_EFFECT_TASK: Task = None
 
 # Pin configuration
 LED_STRIP: NeoPixel
+DEBUG_LED = NeoPixel(Pin(16), 1) # The funny RGB LED pico zeros have on board
 SMC_UART = UART(0, baudrate=115200, rx=1)
+# If this pin isn't connected (say for a slim), then the code will behave like normal since this pin is pulled high, so if its floating it will always high, bypassing the checks
+SENSE_PIN = Pin(2, Pin.IN, Pin.PULL_UP)
 
 # Load and save settings
 def load_settings():
     global SETTINGS
     with open("settings.json", "r") as f:
         SETTINGS = load(f)
+
 def save_settings():
     with open("settings.json", "w") as f:
         dump(SETTINGS, f)
@@ -56,25 +60,15 @@ def set_animation(effect: int):
     LED_STRIP.fill((0, 0, 0))
     LED_STRIP.write()
     if effect == 0:
-        LED_STRIP.fill(SETTINGS["rgb"])
-        LED_STRIP.write()
+        LED_EFFECT_TASK = create_task(static_color())
     elif effect == 1:
-        r1, g1, b1 = SETTINGS["rgb"]
-        r2, g2, b2 = 255 - r1, 255 - g1, 255 - b1
-        length = SETTINGS["ledCount"]
-        for i in range(length):
-            factor = i / (length - 1) if length > 1 else 1
-            r = int(r1 + (r2 - r1) * factor)
-            g = int(g1 + (g2 - g1) * factor)
-            b = int(b1 + (b2 - b1) * factor)
-            LED_STRIP[i] = (r, g, b)
-        LED_STRIP.write()
+        LED_EFFECT_TASK = create_task(gradient())
     elif effect == 2:
         LED_EFFECT_TASK = create_task(static_pulse())
     elif effect == 3:
         LED_EFFECT_TASK = create_task(static_twinkle())
     elif effect == 4:
-        return # Code already shuts the LEDs off so returning won't hurt
+        LED_EFFECT_TASK = create_task(LEDs_OFF())
     elif effect == 5:
         LED_EFFECT_TASK = create_task(color_wave())
     elif effect == 6:
@@ -84,7 +78,21 @@ def set_animation(effect: int):
     elif effect == 8:
         LED_EFFECT_TASK = create_task(dynamic_twinkle())
 
-# Animated Effects
+# Effects
+async def static_color():
+    LED_STRIP.fill(SETTINGS["rgb"])
+    LED_STRIP.write()
+async def gradient():
+    r1, g1, b1 = SETTINGS["rgb"]
+    r2, g2, b2 = 255 - r1, 255 - g1, 255 - b1
+    length = SETTINGS["ledCount"]
+    for i in range(length):
+        factor = i / (length - 1) if length > 1 else 1
+        r = int(r1 + (r2 - r1) * factor)
+        g = int(g1 + (g2 - g1) * factor)
+        b = int(b1 + (b2 - b1) * factor)
+        LED_STRIP[i] = (r, g, b)
+    LED_STRIP.write()
 async def static_pulse():
     while True:
         for brightness in range(0, 256, 5):
@@ -111,14 +119,13 @@ async def static_twinkle():
                 brightness[i] = 255  # Full brightness randomly
             elif brightness[i] > 0:
                 brightness[i] = max(0, brightness[i] - 15)  # Fade down
-
             r = int(SETTINGS["rgb"][0] * brightness[i] / 255)
             g = int(SETTINGS["rgb"][1] * brightness[i] / 255)
             b = int(SETTINGS["rgb"][2] * brightness[i] / 255)
             LED_STRIP[i] = (r, g, b)
         LED_STRIP.write()
         await sleep(0.05)
-def LEDs_OFF():
+async def LEDs_OFF():
     return
 async def color_wave():
     pos = 0
@@ -163,7 +170,6 @@ async def dynamic_pulse():
             r = min(255, r + step)
         elif r == 255 and b > 0 and g == 0:
             b = max(0, b - step)
-
         # --- Brightness Pulse Step ---
         brightness += direction * 10
         if brightness >= 255:
@@ -172,12 +178,10 @@ async def dynamic_pulse():
         elif brightness <= 0:
             brightness = 0
             direction = 1
-
         # Apply brightness scaling
         r_val = int(r * brightness / 255)
         g_val = int(g * brightness / 255)
         b_val = int(b * brightness / 255)
-
         # Update LED strip
         LED_STRIP.fill((r_val, g_val, b_val))
         LED_STRIP.write()
@@ -186,7 +190,6 @@ async def dynamic_twinkle():
     led_count = SETTINGS["ledCount"]
     brightness = [0] * led_count  # Per-LED brightness
     colors = [(0, 0, 0)] * led_count  # Per-LED color
-
     while True:
         for i in range(led_count):
             if brightness[i] == 0 and getrandbits(4) == 0:
@@ -199,12 +202,10 @@ async def dynamic_twinkle():
                 )
             elif brightness[i] > 0:
                 brightness[i] = max(0, brightness[i] - 15)
-
             r = int(colors[i][0] * brightness[i] / 255)
             g = int(colors[i][1] * brightness[i] / 255)
             b = int(colors[i][2] * brightness[i] / 255)
             LED_STRIP[i] = (r, g, b)
-
         LED_STRIP.write()
         await sleep(0.05)
 # Helper
@@ -231,20 +232,32 @@ def parse_xlume_data(data: str) -> dict:
 
 async def main():
     global LED_STRIP
+    global LED_EFFECT_TASK
     load_settings()
     LED_STRIP = NeoPixel(Pin(0), SETTINGS["ledCount"])
-    update_settings(SETTINGS)
+
+    if SENSE_PIN.value() == 1:
+        update_settings(SETTINGS)
     
     while True:
-        if SMC_UART.any():
-            print("incoming")
-            await sleep_ms(5) # Wait for final few bits to arrive (somehow fixes a cutoff bug)
-            data = SMC_UART.read()
-            print(data)
-            if data is not None:
-                options = parse_xlume_data(data.decode("utf-8"))
-                update_settings(options)
-        await sleep_ms(1)
+        if SENSE_PIN.value() == 1:
+            if LED_EFFECT_TASK is None:
+                update_settings(SETTINGS)
+            if SMC_UART.any():
+                await sleep_ms(5) # Wait for final few bits to arrive (somehow fixes a cutoff bug)
+                data = SMC_UART.read()
+                if data is not None:
+                    options = parse_xlume_data(data.decode("utf-8"))
+                    update_settings(options)
+            await sleep_ms(1)
+        if SENSE_PIN.value() == 0:
+            if LED_EFFECT_TASK is not None: # Terminate the task
+                LED_EFFECT_TASK.cancel()
+                LED_EFFECT_TASK: Task = None
+            LED_STRIP.fill((0, 0, 0))
+            LED_STRIP.write()
+            await sleep_ms(1)
+
 
 run(main())
 
