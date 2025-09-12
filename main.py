@@ -16,14 +16,17 @@ LED_EFFECT_TASK: Task = None
 
 # Pin Setup
 LED_STRIP_PIN = 0
-LED_STRIP: NeoPixel # Undefined until initialized
+LED_STRIP: NeoPixel  # Undefined until initialized
 SMC_UART = UART(0, baudrate=115200, rx=1)
-SENSE_PIN = Pin(2, Pin.IN, Pin.PULL_UP) # Only used if Pico uses standby power, otherwise stays disconnected
+SENSE_PIN = Pin(
+    2, Pin.IN, Pin.PULL_UP
+)  # Only used if Pico uses standby power, otherwise stays disconnected
+
 
 # Load and save settings
 def load_settings():
     global SETTINGS
-    
+
     with open("settings.json", "r") as f:
         SETTINGS = load(f)
 
@@ -37,38 +40,38 @@ def update_settings(options: dict):
     global SETTINGS
     global LED_STRIP
     global LED_EFFECT_TASK
-    
+
     if (
         options["ledCount"] is None
         and options["rgb"] is None
         and options["effect"] is None
     ):
         return  # Just return, don't even bother saving the file, why the bloody hell would you.
-    
+
     if options["ledCount"] is not None:
         SETTINGS["ledCount"] = options["ledCount"]
         LED_STRIP = NeoPixel(Pin(0), SETTINGS["ledCount"])
         set_animation(
             SETTINGS["effect"]
         )  # Restart the animation with the updated LED count.
-    
+
     if options["rgb"] is not None:
         SETTINGS["rgb"] = options["rgb"]
-    
+
     if options["effect"] is not None:
         SETTINGS["effect"] = options["effect"]
         set_animation(SETTINGS["effect"])
-    
+
     save_settings()
 
 
 def set_animation(effect: int):
     global LED_EFFECT_TASK
-    
+
     if LED_EFFECT_TASK is not None:  # Terminate the current LED effect task
         LED_EFFECT_TASK.cancel()
         LED_EFFECT_TASK: Task = None
-    
+
     LED_STRIP.fill((0, 0, 0))
     LED_STRIP.write()
 
@@ -167,7 +170,7 @@ async def color_wave():
             g = int((sin(x + 2.094) * 127) + 128)  # Offset by 120°
             b = int((sin(x + 4.188) * 127) + 128)  # Offset by 240°
             LED_STRIP[i] = (r, g, b)
-            
+
         LED_STRIP.write()
         pos += 1
         await sleep(0.05)
@@ -217,12 +220,12 @@ async def dynamic_pulse():
         elif brightness <= 0:
             brightness = 0
             direction = 1
-        
+
         # Apply brightness scaling
         r_val = int(r * brightness / 255)
         g_val = int(g * brightness / 255)
         b_val = int(b * brightness / 255)
-        
+
         # Update LED strip
         LED_STRIP.fill((r_val, g_val, b_val))
         LED_STRIP.write()
@@ -246,12 +249,12 @@ async def dynamic_twinkle():
                 )
             elif brightness[i] > 0:
                 brightness[i] = max(0, brightness[i] - 15)
-            
+
             r = int(colors[i][0] * brightness[i] / 255)
             g = int(colors[i][1] * brightness[i] / 255)
             b = int(colors[i][2] * brightness[i] / 255)
             LED_STRIP[i] = (r, g, b)
-        
+
         LED_STRIP.write()
         await sleep(0.05)
 
@@ -282,7 +285,7 @@ async def main():
     global LED_EFFECT_TASK
 
     load_settings()
-    
+
     LED_STRIP = NeoPixel(Pin(0), SETTINGS["ledCount"])
 
     if SENSE_PIN.value() == 1:
