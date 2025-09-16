@@ -50,7 +50,7 @@ def update_settings(options: dict):
 
     if options["ledCount"] is not None:
         SETTINGS["ledCount"] = options["ledCount"]
-        LED_STRIP = NeoPixel(Pin(0), SETTINGS["ledCount"])
+        LED_STRIP = NeoPixel(Pin(LED_STRIP_PIN), SETTINGS["ledCount"])
         set_animation(
             SETTINGS["effect"]
         )  # Restart the animation with the updated LED count.
@@ -286,7 +286,7 @@ async def main():
 
     load_settings()
 
-    LED_STRIP = NeoPixel(Pin(0), SETTINGS["ledCount"])
+    LED_STRIP = NeoPixel(Pin(LED_STRIP_PIN), SETTINGS["ledCount"])
 
     if SENSE_PIN.value() == 1:
         update_settings(SETTINGS)
