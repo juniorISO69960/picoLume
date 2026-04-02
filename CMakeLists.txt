@@ -44,6 +44,8 @@ pico_set_program_version(picoLume "0.1")
 pico_enable_stdio_uart(picoLume 1)
 pico_enable_stdio_usb(picoLume 0)
 
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
+
 # Add the standard library to the build
 target_link_libraries(picoLume
         pico_stdlib)
